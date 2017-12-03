@@ -5,7 +5,7 @@ hg_dirty() {
     about 'displays dirty status of hg repository'
     group 'hg'
 
-    hg status --no-color 2> /dev/null \
+    hg status --color never 2> /dev/null \
     | awk '$1 == "?" { print "?" } $1 != "?" { print "!" }' \
     | sort | uniq | head -c1
 }
