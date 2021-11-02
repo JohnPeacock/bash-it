@@ -1,5 +1,6 @@
+# shellcheck shell=bash
 cite about-plugin
-about-plugin 'Search&Select history and fasd with percol'
+about-plugin 'Search&Select history with percol'
 
 # Notice
 ## You have to upgrade bash to bash 4.x on Mac OS X.
@@ -8,39 +9,24 @@ about-plugin 'Search&Select history and fasd with percol'
 # Install
 ## (sudo) pip install percol
 ## bash-it enable percol
-## optional: bash-it enable fasd
 
 # Usage
 ## C-r to search&select from history
-## zz to search&select from fasd
 
-_replace_by_history() {
-    if command -v tac>/dev/null; then
-        alias _tac=tac
-    else
-        alias _tac="tail -r"
-    fi
-    local l=$(HISTTIMEFORMAT= history | _tac | sed -e 's/^\ *[0-9]*\ *//' | percol --query "$READLINE_LINE")
-    READLINE_LINE="$l"
-    READLINE_POINT=${#l}
-}
+_command_exists percol || return
 
-
-if command -v percol>/dev/null; then
-    local current_version=${BASH_VERSION%%[^0-9]*}
-    if [ $current_version -lt 4 ]; then
-       echo -e "\033[91mWarning: You have to upgrade Bash to Bash v4.x to use the 'percol' plugin.\033[m"
-       echo -e "\033[91m         Your current Bash version is $BASH_VERSION.\033[m"
-    else
-        bind -x '"\C-r": _replace_by_history'
-
-        # bind zz to percol if fasd enable
-        unalias zz
-        if command -v fasd>/dev/null; then
-            function zz() {
-                local l=$(fasd -d | awk '{print $2}' | percol)
-                cd $l
-            }
-        fi
-    fi
+if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
+	_log_warning "You have to upgrade Bash to Bash v4.x to use the 'percol' plugin."
+	_log_warning "Your current Bash version is $BASH_VERSION."
+	return
 fi
+
+function _replace_by_history() {
+	local HISTTIMEFORMAT= # Ensure we can parse history properly
+	#TODO: "${histlines[@]/*( )+([[:digit:]])*( )/}"
+	local l
+	l="$(history | tail -r | sed -e 's/^\ *[0-9]*\ *//' | percol --query "${READLINE_LINE:-}")"
+	READLINE_LINE="${l}"
+	READLINE_POINT=${#l}
+}
+bind -x '"\C-r": _replace_by_history'

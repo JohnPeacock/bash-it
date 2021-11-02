@@ -5,63 +5,97 @@ BASH_IT_LOAD_PRIORITY_DEFAULT_PLUGIN=${BASH_IT_LOAD_PRIORITY_DEFAULT_PLUGIN:-250
 BASH_IT_LOAD_PRIORITY_DEFAULT_COMPLETION=${BASH_IT_LOAD_PRIORITY_DEFAULT_COMPLETION:-350}
 BASH_IT_LOAD_PRIORITY_SEPARATOR="---"
 
+# Handle the different ways of running `sed` without generating a backup file based on OS
+# - GNU sed (Linux) uses `-i`
+# - BSD sed (macOS) uses `-i ''`
+# To use this in Bash-it for inline replacements with `sed`, use the following syntax:
+# sed "${BASH_IT_SED_I_PARAMETERS[@]}" -e "..." file
+BASH_IT_SED_I_PARAMETERS=(-i)
+case "$OSTYPE" in
+  'darwin'*) BASH_IT_SED_I_PARAMETERS=(-i "")
+esac
+
 function _command_exists ()
 {
   _about 'checks for existence of a command'
   _param '1: command to check'
+  _param '2: (optional) log message to include when command not found'
   _example '$ _command_exists ls && echo exists'
   _group 'lib'
-  type "$1" &> /dev/null ;
-}
-
-# Helper function loading various enable-able files
-function _load_bash_it_files() {
-  subdirectory="$1"
-  if [ -d "${BASH_IT}/${subdirectory}/enabled" ]
+  local msg="${2:-Command '$1' does not exist!}"
+  if type -t "$1" &> /dev/null
   then
-    FILES="${BASH_IT}/${subdirectory}/enabled/*.bash"
-    for config_file in $FILES
-    do
-      if [ -e "${config_file}" ]; then
-        source $config_file
-      fi
-    done
+	  return 0
+  else
+	  _log_warning "$msg"
+	  return 1
   fi
 }
 
-function _load_global_bash_it_files() {
-  # In the new structure
-  if [ -d "${BASH_IT}/enabled" ]
+function _binary_exists ()
+{
+  _about 'checks for existence of a binary'
+  _param '1: binary to check'
+  _param '2: (optional) log message to include when binary not found'
+  _example '$ _binary_exists ls && echo exists'
+  _group 'lib'
+  local msg="${2:-Binary '$1' does not exist!}"
+  if type -P "$1" &> /dev/null
   then
-    FILES="${BASH_IT}/enabled/*.bash"
-    for config_file in $FILES
-    do
-      if [ -e "${config_file}" ]; then
-        source $config_file
-      fi
-    done
+	return 0
+  else
+	_log_warning "$msg"
+	return 1
   fi
 }
 
-# Function for reloading aliases
-function reload_aliases() {
-  _load_bash_it_files "aliases"
+function _completion_exists ()
+{
+  _about 'checks for existence of a completion'
+  _param '1: command to check'
+  _param '2: (optional) log message to include when completion is found'
+  _example '$ _completion_exists gh && echo exists'
+  _group 'lib'
+  local msg="${2:-Completion for '$1' already exists!}"
+  complete -p "$1" &> /dev/null && _log_warning "$msg" ;
 }
 
-# Function for reloading auto-completion
-function reload_completion() {
-  _load_bash_it_files "completion"
+function _bash_it_homebrew_check()
+{
+	if _binary_exists 'brew'
+	then # Homebrew is installed
+		if [[ "${BASH_IT_HOMEBREW_PREFIX:-unset}" == 'unset' ]]
+		then # variable isn't set
+			BASH_IT_HOMEBREW_PREFIX="$(brew --prefix)"
+		else
+			true # Variable is set already, don't invoke `brew`.
+		fi
+	else # Homebrew is not installed.
+		BASH_IT_HOMEBREW_PREFIX= # clear variable, if set to anything.
+		false # return failure if brew not installed.
+	fi
 }
 
-# Function for reloading plugins
-function reload_plugins() {
-  _load_bash_it_files "plugins"
+function _make_reload_alias() {
+  echo "source \${BASH_IT}/scripts/reloader.bash ${1} ${2}"
 }
+
+# Alias for reloading aliases
+# shellcheck disable=SC2139
+alias reload_aliases="$(_make_reload_alias alias aliases)"
+
+# Alias for reloading auto-completion
+# shellcheck disable=SC2139
+alias reload_completion="$(_make_reload_alias completion completion)"
+
+# Alias for reloading plugins
+# shellcheck disable=SC2139
+alias reload_plugins="$(_make_reload_alias plugin plugins)"
 
 bash-it ()
 {
     about 'Bash-it help and maintenance'
-    param '1: verb [one of: help | show | enable | disable | migrate | update | search | version ] '
+    param '1: verb [one of: help | show | enable | disable | migrate | update | search | version | reload | restart | doctor ] '
     param '2: component type [one of: alias(es) | completion(s) | plugin(s) ] or search term(s)'
     param '3: specific component [optional]'
     example '$ bash-it show plugins'
@@ -70,34 +104,44 @@ bash-it ()
     example '$ bash-it disable alias hg [tmux]...'
     example '$ bash-it migrate'
     example '$ bash-it update'
-    example '$ bash-it search ruby [[-]rake]... [--enable | --disable]'
+    example '$ bash-it search [-|@]term1 [-|@]term2 ... [ -e/--enable ] [ -d/--disable ] [ -r/--refresh ] [ -c/--no-color ]'
     example '$ bash-it version'
+    example '$ bash-it reload'
+    example '$ bash-it restart'
+    example '$ bash-it doctor errors|warnings|all'
     typeset verb=${1:-}
     shift
     typeset component=${1:-}
     shift
     typeset func
+
     case $verb in
-         show)
-             func=_bash-it-$component;;
-         enable)
-             func=_enable-$component;;
-         disable)
-             func=_disable-$component;;
-         help)
-             func=_help-$component;;
-         search)
-             _bash-it-search $component "$@"
-             return;;
-         update)
-             func=_bash-it_update;;
-         migrate)
-             func=_bash-it-migrate;;
-         version)
-             func=_bash-it-version;;
-         *)
-             reference bash-it
-             return;;
+      show)
+        func=_bash-it-$component;;
+      enable)
+        func=_enable-$component;;
+      disable)
+        func=_disable-$component;;
+      help)
+        func=_help-$component;;
+      doctor)
+        func=_bash-it-doctor-$component;;
+      search)
+        _bash-it-search $component "$@"
+        return;;
+      update)
+        func=_bash-it-update-$component;;
+      migrate)
+        func=_bash-it-migrate;;
+      version)
+        func=_bash-it-version;;
+      restart)
+        func=_bash-it-restart;;
+      reload)
+        func=_bash-it-reload;;
+      *)
+        reference bash-it
+        return;;
     esac
 
     # pluralize component if necessary
@@ -123,6 +167,10 @@ bash-it ()
         do
             $func $arg
         done
+
+        if [ -n "${BASH_IT_AUTOMATIC_RELOAD_AFTER_CONFIG_CHANGE:-}" ]; then
+          _bash-it-reload
+        fi
     else
         $func "$@"
     fi
@@ -160,38 +208,137 @@ _bash-it-plugins ()
     _bash-it-describe "plugins" "a" "plugin" "Plugin"
 }
 
-_bash-it_update() {
-  _about 'updates Bash-it'
+_bash-it-update-dev() {
+  _about 'updates Bash-it to the latest master'
   _group 'lib'
 
-  cd "${BASH_IT}" || return
+  _bash-it-update- dev "$@"
+}
 
-  if [ -z $BASH_IT_REMOTE ]; then
+_bash-it-update-stable() {
+  _about 'updates Bash-it to the latest tag'
+  _group 'lib'
+
+  _bash-it-update- stable "$@"
+}
+
+_bash-it_update_migrate_and_restart() {
+	_about 'Checks out the wanted version, pops directory and restart. Does not return (because of the restart!)'
+  _param '1: Which branch to checkout to'
+  _param '2: Which type of version we are using'
+  git checkout "$1" &> /dev/null
+  if [[ $? -eq 0 ]]; then
+    echo "Bash-it successfully updated."
+    echo ""
+    echo "Migrating your installation to the latest $2 version now..."
+    _bash-it-migrate
+    echo ""
+    echo "All done, enjoy!"
+    # Don't forget to restore the original pwd!
+    popd &> /dev/null
+    _bash-it-restart
+  else
+    echo "Error updating Bash-it, please, check if your Bash-it installation folder (${BASH_IT}) is clean."
+  fi
+}
+
+_bash-it-update-() {
+  _about 'updates Bash-it'
+  _param '1: What kind of update to do (stable|dev)'
+  _group 'lib'
+
+  declare silent
+  for word in $@; do
+    if [[ ${word} == "--silent" || ${word} == "-s" ]]; then
+      silent=true
+    fi
+  done
+
+  pushd "${BASH_IT}" &> /dev/null || return
+
+  DIFF=$(git diff --name-status)
+  [ -n "$DIFF" ] && echo -e "Local changes detected in bash-it directory. Clean '$BASH_IT' directory to proceed.\n$DIFF" && return 1
+
+  if [ -z "$BASH_IT_REMOTE" ]; then
     BASH_IT_REMOTE="origin"
   fi
 
-  git fetch &> /dev/null
+  git fetch $BASH_IT_REMOTE --tags &> /dev/null
 
-  declare status
-  status="$(git rev-list master..${BASH_IT_REMOTE}/master 2> /dev/null)"
+  if [ -z "$BASH_IT_DEVELOPMENT_BRANCH" ]; then
+    BASH_IT_DEVELOPMENT_BRANCH="master"
+  fi
+  # Defaults to stable update
+  if [ -z "$1" ] || [ "$1" == "stable" ]; then
+    version="stable"
+    TARGET=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2> /dev/null)
 
-  if [[ -n "${status}" ]]; then
-    git pull --rebase &> /dev/null
-    if [[ $? -eq 0 ]]; then
-      echo "Bash-it successfully updated."
-      echo ""
-      echo "Migrating your installation to the latest version now..."
-      _bash-it-migrate
-      echo ""
-      echo "All done, enjoy!"
-      reload
-    else
-      echo "Error updating Bash-it, please, check if your Bash-it installation folder (${BASH_IT}) is clean."
+    if [[ -z "$TARGET" ]]; then
+      echo "Can not find tags, so can not update to latest stable version..."
+      popd &> /dev/null
+      return
     fi
   else
-    echo "Bash-it is up to date, nothing to do!"
+    version="dev"
+    TARGET=${BASH_IT_REMOTE}/${BASH_IT_DEVELOPMENT_BRANCH}
   fi
-  cd - &> /dev/null || return
+
+  declare revision
+  revision="HEAD..${TARGET}"
+  declare status
+  status="$(git rev-list ${revision} 2> /dev/null)"
+  declare revert
+
+  if [[ -z "${status}" && ${version} == "stable" ]]; then
+    revision="${TARGET}..HEAD"
+    status="$(git rev-list ${revision} 2> /dev/null)"
+    revert=true
+  fi
+
+  if [[ -n "${status}" ]]; then
+    if [[ $revert ]]; then
+      echo "Your version is a more recent development version ($(git log -1 --format=%h HEAD))"
+      echo "You can continue in order to revert and update to the latest stable version"
+      echo ""
+      log_color="%Cred"
+    fi
+
+    for i in $(git rev-list --merges --first-parent ${revision}); do
+      num_of_lines=$(git log -1 --format=%B $i | awk 'NF' | wc -l)
+      if [ $num_of_lines -eq 1 ]; then
+        description="%s"
+      else
+        description="%b"
+      fi
+      git log --format="${log_color}%h: $description (%an)" -1 $i
+    done
+    echo ""
+
+    if [[ $silent ]]; then
+      echo "Updating to ${TARGET}($(git log -1 --format=%h "${TARGET}"))..."
+      _bash-it_update_migrate_and_restart $TARGET $version
+    else
+      read -e -n 1 -p "Would you like to update to ${TARGET}($(git log -1 --format=%h "${TARGET}"))? [Y/n] " RESP
+      case $RESP in
+        [yY]|"")
+          _bash-it_update_migrate_and_restart $TARGET $version
+          ;;
+        [nN])
+          echo "Not updating…"
+          ;;
+        *)
+          echo -e "\033[91mPlease choose y or n.\033[m"
+          ;;
+        esac
+    fi
+  else
+    if [[ ${version} == "stable" ]]; then
+      echo "You're on the latest stable version. If you want to check out the latest 'dev' version, please run \"bash-it update dev\""
+    else
+      echo "Bash-it is up to date, nothing to do!"
+    fi
+  fi
+  popd &> /dev/null
 }
 
 _bash-it-migrate() {
@@ -205,7 +352,7 @@ _bash-it-migrate() {
   do
     for f in `sort <(compgen -G "${BASH_IT}/$file_type/enabled/*.bash")`
     do
-      typeset ff=$(basename $f)
+      typeset ff="${f##*/}"
 
       # Get the type of component from the extension
       typeset single_type=$(echo $ff | sed -e 's/.*\.\(.*\)\.bash/\1/g' | sed 's/aliases/alias/g')
@@ -219,10 +366,14 @@ _bash-it-migrate() {
       disable_func="_disable-$single_type"
       enable_func="_enable-$single_type"
 
-      $disable_func $component_name
-      $enable_func $component_name
+      $disable_func "$component_name"
+      $enable_func "$component_name"
     done
   done
+
+  if [ -n "$BASH_IT_AUTOMATIC_RELOAD_AFTER_CONFIG_CHANGE" ]; then
+    _bash-it-reload
+  fi
 
   if [ "$migrated_something" = "true" ]; then
     echo ""
@@ -236,20 +387,109 @@ _bash-it-version() {
 
   cd "${BASH_IT}" || return
 
-  if [ -z $BASH_IT_REMOTE ]; then
+  if [ -z "${BASH_IT_REMOTE:-}" ]; then
     BASH_IT_REMOTE="origin"
   fi
 
   BASH_IT_GIT_REMOTE=$(git remote get-url $BASH_IT_REMOTE)
   BASH_IT_GIT_URL=${BASH_IT_GIT_REMOTE%.git}
+  if [[ "$BASH_IT_GIT_URL" == *"git@"* ]]; then
+    # Fix URL in case it is ssh based URL
+    BASH_IT_GIT_URL=${BASH_IT_GIT_URL/://}
+    BASH_IT_GIT_URL=${BASH_IT_GIT_URL/git@/https://}
+  fi
 
-  BASH_IT_GIT_VERSION_INFO="$(git log --pretty=format:'%h on %aI' -n 1)"
-  BASH_IT_GIT_SHA=${BASH_IT_GIT_VERSION_INFO%% *}
+  current_tag=$(git describe --exact-match --tags 2> /dev/null)
 
-  echo "Current git SHA: $BASH_IT_GIT_VERSION_INFO"
-  echo "$BASH_IT_GIT_URL/commit/$BASH_IT_GIT_SHA"
+  if [[ -z $current_tag ]]; then
+    BASH_IT_GIT_VERSION_INFO="$(git log --pretty=format:'%h on %aI' -n 1)"
+    TARGET=${BASH_IT_GIT_VERSION_INFO%% *}
+    echo "Version type: dev"
+    echo "Current git SHA: $BASH_IT_GIT_VERSION_INFO"
+    echo "Commit info: $BASH_IT_GIT_URL/commit/$TARGET"
+  else
+    TARGET=$current_tag
+    echo "Version type: stable"
+    echo "Current tag: $current_tag"
+    echo "Tag information: $BASH_IT_GIT_URL/releases/tag/$current_tag"
+  fi
+
+  echo "Compare to latest: $BASH_IT_GIT_URL/compare/$TARGET...master"
 
   cd - &> /dev/null || return
+}
+
+_bash-it-doctor() {
+  _about 'reloads a profile file with a BASH_IT_LOG_LEVEL set'
+  _param '1: BASH_IT_LOG_LEVEL argument: "errors" "warnings" "all"'
+  _group 'lib'
+
+  BASH_IT_LOG_LEVEL=$1
+  _bash-it-reload
+  unset BASH_IT_LOG_LEVEL
+}
+
+_bash-it-doctor-all() {
+  _about 'reloads a profile file with error, warning and debug logs'
+  _group 'lib'
+
+  _bash-it-doctor $BASH_IT_LOG_LEVEL_ALL
+}
+
+_bash-it-doctor-warnings() {
+  _about 'reloads a profile file with error and warning logs'
+  _group 'lib'
+
+  _bash-it-doctor $BASH_IT_LOG_LEVEL_WARNING
+}
+
+_bash-it-doctor-errors() {
+  _about 'reloads a profile file with error logs'
+  _group 'lib'
+
+  _bash-it-doctor $BASH_IT_LOG_LEVEL_ERROR
+}
+
+_bash-it-doctor-() {
+  _about 'default bash-it doctor behavior, behaves like bash-it doctor all'
+  _group 'lib'
+
+  _bash-it-doctor-all
+}
+
+_bash-it-restart() {
+  _about 'restarts the shell in order to fully reload it'
+  _group 'lib'
+
+  saved_pwd="${PWD}"
+
+  case $OSTYPE in
+    darwin*)
+      init_file=.bash_profile
+      ;;
+    *)
+      init_file=.bashrc
+      ;;
+  esac
+  exec "${0/-/}" --rcfile <(echo "source \"$HOME/$init_file\"; cd \"$saved_pwd\"")
+}
+
+_bash-it-reload() {
+  _about 'reloads a profile file'
+  _group 'lib'
+
+  pushd "${BASH_IT}" &> /dev/null || return
+
+  case $OSTYPE in
+    darwin*)
+      source ~/.bash_profile
+      ;;
+    *)
+      source ~/.bashrc
+      ;;
+  esac
+
+  popd &> /dev/null || return
 }
 
 _bash-it-describe ()
@@ -273,7 +513,7 @@ _bash-it-describe ()
     do
         # Check for both the old format without the load priority, and the extended format with the priority
         declare enabled_files enabled_file
-        enabled_file=$(basename $f)
+		enabled_file="${f##*/}"
         enabled_files=$(sort <(compgen -G "${BASH_IT}/enabled/*$BASH_IT_LOAD_PRIORITY_SEPARATOR${enabled_file}") <(compgen -G "${BASH_IT}/$subdirectory/enabled/${enabled_file}") <(compgen -G "${BASH_IT}/$subdirectory/enabled/*$BASH_IT_LOAD_PRIORITY_SEPARATOR${enabled_file}") | wc -l)
 
         if [ $enabled_files -gt 0 ]; then
@@ -289,6 +529,17 @@ _bash-it-describe ()
     printf '%s\n' "$ bash-it disable $file_type <$file_type name> [$file_type name]... -or- $ bash-it disable $file_type all"
 }
 
+_on-disable-callback()
+{
+    _about 'Calls the disabled plugin destructor, if present'
+    _param '1: plugin name'
+    _example '$ _on-disable-callback gitstatus'
+    _group 'lib'
+
+    callback=$1_on_disable
+    _command_exists $callback && $callback
+}
+
 _disable-plugin ()
 {
     _about 'disables bash_it plugin'
@@ -297,6 +548,7 @@ _disable-plugin ()
     _group 'lib'
 
     _disable-thing "plugins" "plugin" $1
+    _on-disable-callback $1
 }
 
 _disable-alias ()
@@ -363,15 +615,13 @@ _disable-thing ()
               printf '%s\n' "sorry, $file_entity does not appear to be an enabled $file_type."
               return
           fi
-          rm "${BASH_IT}/$subdirectory/enabled/$(basename $plugin)"
+          rm "${BASH_IT}/$subdirectory/enabled/${plugin##*/}"
         else
-          rm "${BASH_IT}/enabled/$(basename $plugin_global)"
+          rm "${BASH_IT}/enabled/${plugin_global##*/}"
         fi
     fi
 
-    if [ -n "$BASH_IT_AUTOMATIC_RELOAD_AFTER_CONFIG_CHANGE" ]; then
-        exec ${0/-/}
-    fi
+    _bash-it-clean-component-cache "${file_type}"
 
     printf '%s\n' "$file_entity disabled."
 }
@@ -431,6 +681,9 @@ _enable-thing ()
         for f in "${BASH_IT}/$subdirectory/available/"*.bash
         do
             to_enable=$(basename $f .$file_type.bash)
+            if [ "$file_type" = "alias" ]; then
+              to_enable=$(basename $f ".aliases.bash")
+            fi
             _enable-thing $subdirectory $file_type $to_enable $load_priority
         done
     else
@@ -440,7 +693,7 @@ _enable-thing ()
             return
         fi
 
-        to_enable=$(basename $to_enable)
+		to_enable="${to_enable##*/}"
         # Check for existence of the file using a wildcard, since we don't know which priority might have been used when enabling it.
         typeset enabled_plugin=$(command ls "${BASH_IT}/$subdirectory/enabled/"{[0-9][0-9][0-9]$BASH_IT_LOAD_PRIORITY_SEPARATOR$to_enable,$to_enable} 2>/dev/null | head -1)
         if [ ! -z "$enabled_plugin" ] ; then
@@ -458,15 +711,13 @@ _enable-thing ()
 
         # Load the priority from the file if it present there
         declare local_file_priority use_load_priority
-        local_file_priority=$(grep -E "^# BASH_IT_LOAD_PRIORITY:" "${BASH_IT}/$subdirectory/available/$to_enable" | awk -F': ' '{ print $2 }')
-        use_load_priority=${local_file_priority:-$load_priority}
+		local_file_priority="$(_bash-it-egrep "^# BASH_IT_LOAD_PRIORITY:" "${BASH_IT}/$subdirectory/available/$to_enable" | awk -F': ' '{ print $2 }')"
+		use_load_priority="${local_file_priority:-$load_priority}"
 
         ln -s ../$subdirectory/available/$to_enable "${BASH_IT}/enabled/${use_load_priority}${BASH_IT_LOAD_PRIORITY_SEPARATOR}${to_enable}"
     fi
 
-    if [ -n "$BASH_IT_AUTOMATIC_RELOAD_AFTER_CONFIG_CHANGE" ]; then
-        exec ${0/-/}
-    fi
+    _bash-it-clean-component-cache "${file_type}"
 
     printf '%s\n' "$file_entity enabled with priority $use_load_priority."
 }
@@ -527,14 +778,14 @@ _help-plugins()
     printf '%s' 'please wait, building help...'
     typeset grouplist=$(mktemp -t grouplist.XXXXXX)
     typeset func
-    for func in $(typeset_functions)
+    for func in $(_typeset_functions)
     do
         typeset group="$(typeset -f $func | metafor group)"
         if [ -z "$group" ]; then
             group='misc'
         fi
         typeset about="$(typeset -f $func | metafor about)"
-        letterpress "$about" $func >> $grouplist.$group
+        _letterpress "$about" $func >> $grouplist.$group
         echo $grouplist.$group >> $grouplist
     done
     # clear progress message
@@ -573,7 +824,7 @@ all_groups ()
 
     typeset func
     typeset file=$(mktemp -t composure.XXXX)
-    for func in $(typeset_functions)
+    for func in $(_typeset_functions)
     do
         typeset -f $func | metafor group >> $file
     done
@@ -598,3 +849,30 @@ then
     fi
   }
 fi
+
+# `_bash-it-find-in-ancestor` uses the shell's ability to run a function in
+# a subshell to simplify our search to a simple `cd ..` and `[[ -r $1 ]]`
+# without any external dependencies. Let the shell do what it's good at.
+function _bash-it-find-in-ancestor() (
+	about 'searches parents of the current directory for any of the specified file names'
+	group 'helpers'
+	param '*: names of files or folders to search for'
+	returns '0: prints path of closest matching ancestor directory to stdout'
+	returns '1: no match found'
+	returns '2: improper usage of shell builtin' # uncommon
+	example '_bash-it-find-in-ancestor .git .hg'
+	example '_bash-it-find-in-ancestor GNUmakefile Makefile makefile'
+
+	local kin
+	# To keep things simple, we do not search the root dir.
+	while [[ "${PWD}" != '/' ]]; do
+		for kin in "$@"; do
+			if [[ -r "${PWD}/${kin}" ]]; then
+				printf '%s' "${PWD}"
+				return "$?"
+			fi
+		done
+		command cd .. || return "$?"
+	done
+	return 1
+)

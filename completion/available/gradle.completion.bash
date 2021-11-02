@@ -1,18 +1,30 @@
+# Copyright (c) 2017 Eric Wendelin
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do
+# so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 # Bash breaks words on : by default. Subproject tasks have ':'
 # Avoid inaccurate completions for subproject tasks
 COMP_WORDBREAKS=$(echo "$COMP_WORDBREAKS" | sed -e 's/://g')
 
-__gradle-set-project-root-dir() {
-    local dir=`pwd`
-    project_root_dir=`pwd`
-    while [[ $dir != '/' ]]; do
-        if [[ -f "$dir/settings.gradle" || -f "$dir/gradlew" ]]; then
-            project_root_dir=$dir
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    return 1
+function __gradle-set-project-root-dir() {
+    project_root_dir="$(_bash-it-find-in-ancestor "settings.gradle" "gradlew")"
+    return "$?"
 }
 
 __gradle-init-cache-dir() {
@@ -38,9 +50,9 @@ __gradle-set-cache-name() {
 
 __gradle-set-files-checksum() {
     # Cache MD5 sum of all Gradle scripts and modified timestamps
-    if builtin command -v md5 > /dev/null; then
+    if _command_exists md5; then
         gradle_files_checksum=$(md5 -q -s "$(cat "$cache_dir/$cache_name" | xargs ls -o 2>/dev/null)")
-    elif builtin command -v md5sum > /dev/null; then
+    elif _command_exists md5sum; then
         gradle_files_checksum=$(cat "$cache_dir/$cache_name" | xargs ls -o 2>/dev/null | md5sum | awk '{print $1}')
     else
         echo "Cannot generate completions as neither md5 nor md5sum exist on \$PATH"
