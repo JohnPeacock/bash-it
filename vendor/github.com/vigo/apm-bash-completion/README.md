@@ -19,9 +19,9 @@ dedupe                home                  login                 search        
 deinstall             init                  ls                    show                  update
 delete                install               open                  star                  upgrade
 dev                   link                  outdated              starred               view
-develop               linked                publish               stars                 
-docs                  links                 rebuild               test                  
-erase                 list                  rebuild-module-cache  uninstall             
+develop               linked                publish               stars
+docs                  links                 rebuild               test
+erase                 list                  rebuild-module-cache  uninstall
 
 $ apm publish
 build  major  minor  patch

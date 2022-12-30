@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/rcaloras/bash-preexec.svg?branch=master)](https://travis-ci.org/rcaloras/bash-preexec)
 [![GitHub version](https://badge.fury.io/gh/rcaloras%2Fbash-preexec.svg)](https://badge.fury.io/gh/rcaloras%2Fbash-preexec)
 
-Bash-Preexec 
+Bash-Preexec
 ============
 
 **preexec** and **precmd** hook functions for Bash in the style of Zsh. They aim to emulate the behavior [as described for Zsh](http://zsh.sourceforge.net/Doc/Release/Functions.html#Hook-Functions).
@@ -83,7 +83,7 @@ echo ${precmd_functions[@]}
 ```
 
 ## Subshells
-bash-preexec does not support invoking preexec() for subshells by default. It must be enabled by setting 
+bash-preexec does not support invoking preexec() for subshells by default. It must be enabled by setting
 `__bp_enable_subshells`.
 ```bash
 # Enable experimental subshell support

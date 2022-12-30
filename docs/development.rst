@@ -92,7 +92,7 @@ vendored libs as subtrees we use the `git-vendor <https://github.com/Tyrben/git-
 The `original repo <https://github.com/brettlangdon/git-vendor>`_ for git vendor is
 unmaintained so for now we are recommending Tyrben's fork.
 
-For more information on ``git vendor`` there are a short `usage description <https://github.com/Tyrben/git-vendor#usage>`_ 
+For more information on ``git vendor`` there are a short `usage description <https://github.com/Tyrben/git-vendor#usage>`_
 in the repositories ``README`` file and a website for the original repository has a `manual page <https://brettlangdon.github.io/git-vendor/>`_ which is also included in both
 repositories.
 
@@ -105,7 +105,7 @@ Rebasing a feature branch with an added/updated vendored library
 If your feature branch with a newly added/updated vendored lib has fallen behind master
 you might need to rebase it before creating a PR. However rebasing with dangling
 subtree commits can cause problems.
-The following rebase strategy will pause the rebase at the point where you added a 
+The following rebase strategy will pause the rebase at the point where you added a
 subtree and let you add it again before continuing the rebasing.
 
 ::
