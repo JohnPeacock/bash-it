@@ -8,11 +8,12 @@ function jql() {
 		shift
 		FILE=$*
 	else
-		FILE=$PATTERN
+		FILE=$1
 		PATTERN='.'
 	fi
 
 	PAGER=${PAGER:-less}
 
-	jq $PATTERN "$FILE" | $PAGER
+	# shellcheck disable=SC2086
+	jq $PATTERN $FILE | $PAGER
 }
