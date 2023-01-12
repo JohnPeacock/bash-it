@@ -3,14 +3,16 @@ cite about-plugin
 about-plugin 'simplify using jq with a pager'
 
 function jql() {
-	PATTERN=$1
-	shift
-	FILE=$1
-
-	if [[ -z $FILE ]]; then
-		FILE="$PATTERN"
+	if (($# > 1)); then
+		PATTERN=$1
+		shift
+		FILE=$*
+	else
+		FILE=$PATTERN
 		PATTERN='.'
 	fi
 
-	jq $PATTERN "$FILE" | less
+	PAGER=${PAGER:-less}
+
+	jq $PATTERN "$FILE" | $PAGER
 }
